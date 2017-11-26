@@ -1,0 +1,197 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>Database_Editor_Class</class>
+ <widget class="QWidget" name="Database_Editor_Class">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>935</width>
+    <height>492</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Database Editor</string>
+  </property>
+  <layout class="QGridLayout" name="gridLayout">
+   <item row="2" column="0" colspan="10" alignment="Qt::AlignTop">
+    <widget class="QTableWidget" name="tableWidget_2">
+     <property name="minimumSize">
+      <size>
+       <width>0</width>
+       <height>60</height>
+      </size>
+     </property>
+     <property name="maximumSize">
+      <size>
+       <width>16777215</width>
+       <height>70</height>
+      </size>
+     </property>
+     <attribute name="verticalHeaderVisible">
+      <bool>false</bool>
+     </attribute>
+     <row>
+      <property name="text">
+       <string>New Row</string>
+      </property>
+     </row>
+     <column>
+      <property name="text">
+       <string>New Column</string>
+      </property>
+     </column>
+     <column>
+      <property name="text">
+       <string>New Column</string>
+      </property>
+     </column>
+     <column>
+      <property name="text">
+       <string>New Column</string>
+      </property>
+     </column>
+     <column>
+      <property name="text">
+       <string>New Column</string>
+      </property>
+     </column>
+     <item row="0" column="0">
+      <property name="text">
+       <string>asldkhh</string>
+      </property>
+     </item>
+     <item row="0" column="1">
+      <property name="text">
+       <string>asldkh</string>
+      </property>
+     </item>
+     <item row="0" column="3">
+      <property name="text">
+       <string>sdw</string>
+      </property>
+     </item>
+    </widget>
+   </item>
+   <item row="3" column="0" colspan="10">
+    <widget class="QTableWidget" name="tableWidget">
+     <attribute name="verticalHeaderVisible">
+      <bool>false</bool>
+     </attribute>
+    </widget>
+   </item>
+   <item row="1" column="7">
+    <widget class="QPushButton" name="add_db_element">
+     <property name="text">
+      <string>add element</string>
+     </property>
+    </widget>
+   </item>
+   <item row="1" column="3">
+    <widget class="QComboBox" name="comboBox">
+     <item>
+      <property name="text">
+       <string>Networks</string>
+      </property>
+     </item>
+     <item>
+      <property name="text">
+       <string>Quarz</string>
+      </property>
+     </item>
+     <item>
+      <property name="text">
+       <string>Algorithms</string>
+      </property>
+     </item>
+     <item>
+      <property name="text">
+       <string>Taxonomie</string>
+      </property>
+     </item>
+     <item>
+      <property name="text">
+       <string>Parameter</string>
+      </property>
+     </item>
+    </widget>
+   </item>
+   <item row="1" column="4">
+    <spacer name="horizontalSpacer">
+     <property name="orientation">
+      <enum>Qt::Horizontal</enum>
+     </property>
+     <property name="sizeHint" stdset="0">
+      <size>
+       <width>40</width>
+       <height>20</height>
+      </size>
+     </property>
+    </spacer>
+   </item>
+   <item row="1" column="0">
+    <widget class="QPushButton" name="load">
+     <property name="text">
+      <string>load</string>
+     </property>
+    </widget>
+   </item>
+   <item row="1" column="6">
+    <spacer name="horizontalSpacer_2">
+     <property name="orientation">
+      <enum>Qt::Horizontal</enum>
+     </property>
+     <property name="sizeHint" stdset="0">
+      <size>
+       <width>40</width>
+       <height>20</height>
+      </size>
+     </property>
+    </spacer>
+   </item>
+   <item row="1" column="8">
+    <widget class="QPushButton" name="update_db_element">
+     <property name="text">
+      <string>update element</string>
+     </property>
+    </widget>
+   </item>
+   <item row="1" column="5">
+    <widget class="QPushButton" name="init_database">
+     <property name="text">
+      <string>recreate Database Tabel</string>
+     </property>
+    </widget>
+   </item>
+   <item row="1" column="9">
+    <widget class="QPushButton" name="delete_db_element">
+     <property name="text">
+      <string>delete element</string>
+     </property>
+    </widget>
+   </item>
+   <item row="1" column="2">
+    <spacer name="horizontalSpacer_3">
+     <property name="orientation">
+      <enum>Qt::Horizontal</enum>
+     </property>
+     <property name="sizeHint" stdset="0">
+      <size>
+       <width>40</width>
+       <height>20</height>
+      </size>
+     </property>
+    </spacer>
+   </item>
+   <item row="0" column="7">
+    <widget class="QPushButton" name="copy">
+     <property name="text">
+      <string>copy all</string>
+     </property>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
