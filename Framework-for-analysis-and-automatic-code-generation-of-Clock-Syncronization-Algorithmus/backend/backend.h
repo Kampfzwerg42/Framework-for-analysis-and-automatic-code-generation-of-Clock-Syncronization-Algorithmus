@@ -5,6 +5,7 @@
 #include "vectors.h"
 #include <QStack>
 #include <QtMath>
+#include <QPair>
 
 class backend
 {
@@ -20,7 +21,7 @@ private:
     int operator_precedence(QChar c);
     double randomnumber(double min, double max);
     QString InfixToPostfix(QString infix);
-    QString calculate_intern(QString text,QStringList VarNames,QList<double> Vars,QStringList Vars_nan);
+    QPair<QString,double> calculate_intern(QString text,QStringList VarNames,QList<double> Vars,QStringList Vars_nan);
 };
 
 #endif // BACKEND_H

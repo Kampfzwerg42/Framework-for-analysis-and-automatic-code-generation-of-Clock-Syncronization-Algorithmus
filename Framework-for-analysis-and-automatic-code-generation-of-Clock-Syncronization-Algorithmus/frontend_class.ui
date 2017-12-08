@@ -49,7 +49,7 @@
     <item row="1" column="0" colspan="3">
      <widget class="QTabWidget" name="tabWidget">
       <property name="currentIndex">
-       <number>1</number>
+       <number>2</number>
       </property>
       <widget class="QWidget" name="tab">
        <attribute name="title">
@@ -394,38 +394,31 @@
            <enum>QFrame::Raised</enum>
           </property>
           <layout class="QGridLayout" name="gridLayout_4">
-           <item row="3" column="0">
+           <item row="4" column="0">
             <widget class="QRadioButton" name="Opt_Network">
              <property name="text">
               <string>Network utilization</string>
              </property>
             </widget>
            </item>
-           <item row="4" column="0">
+           <item row="5" column="0">
             <widget class="QRadioButton" name="Opt_wighted_combination">
              <property name="text">
-              <string>Precision and Network: find optima of f(P,N)=</string>
+              <string>Find optima of f()=</string>
              </property>
             </widget>
            </item>
-           <item row="1" column="0">
+           <item row="2" column="0">
             <widget class="QRadioButton" name="Opt_Precision">
              <property name="text">
               <string>Precision</string>
              </property>
             </widget>
            </item>
-           <item row="4" column="1">
+           <item row="5" column="1">
             <widget class="QLineEdit" name="Opt_wight_funktion">
              <property name="toolTip">
-              <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Example:&lt;/p&gt;&lt;p&gt;P*100+N/10+R/100&lt;br/&gt;=&amp;gt;minimize (Precision in ms)*100+(Numbre of Messages)/10+R(SystemParameter)/100&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
-             </property>
-            </widget>
-           </item>
-           <item row="2" column="0">
-            <widget class="QRadioButton" name="Opt_Error">
-             <property name="text">
-              <string>Error</string>
+              <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Example:&lt;/p&gt;&lt;p&gt;Pre*2+U&lt;br/&gt;=&amp;gt;minimize (Precision in ms)*2+(Network utilisation)&lt;/p&gt;&lt;p&gt;=&amp;gt;possible Parameter are in Systemparameter tab&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
              </property>
             </widget>
            </item>
@@ -433,6 +426,13 @@
             <widget class="QLabel" name="label_8">
              <property name="text">
               <string>Optimalize</string>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="0">
+            <widget class="QRadioButton" name="Opt_Error">
+             <property name="text">
+              <string>no optimization</string>
              </property>
             </widget>
            </item>

@@ -167,21 +167,27 @@ QString backend::calculate(QString text,QStringList VarNames,QList<double> Vars,
     QString postfix=InfixToPostfix(text);
 
     postfix.replace(" +"," ");
-    return calculate_intern(postfix,VarNames,Vars,Vars_nan).remove(0,1);
+    QPair<QString,double> Values=calculate_intern(postfix,VarNames,Vars,Vars_nan);
+    return Values.first.remove(0,1);
 }
 
-QString backend::calculate_intern(QString text,QStringList VarNames,QList<double> Vars,QStringList Vars_nan)
+QPair<QString,double>  backend::calculate_intern(QString text,QStringList VarNames,QList<double> Vars,QStringList Vars_nan)
 {
     QStack<QString> Stack;
+    QStack<double> Stack_numbers;
 
-    bool break_loop;
+    int count_numbers=0;
+    QPair<QString,double> error;
+    error.first="";
+    error.second=NAN;
+
     QStringList postfix_list=text.split(" ", QString::SkipEmptyParts);
     for (int i=postfix_list.length()-1;i>=0;--i)
     {
-        break_loop=false;
         if (postfix_list[i].at(0)=='O')
         {
             Stack.push(postfix_list[i]);
+            count_numbers=0;
         }
         else
         {
@@ -200,10 +206,13 @@ QString backend::calculate_intern(QString text,QStringList VarNames,QList<double
                 if (VarNames.contains(temp))
                 {
                     if (!isnan(Vars[VarNames.indexOf(temp)]))
-                        postfix_list[i]="N" + QString::number(Vars[VarNames.indexOf(temp)]*multipier);
+                    {
+                        Stack.push("N");
+                        count_numbers++;
+                        Stack_numbers.push(Vars[VarNames.indexOf(temp)]*multipier);
+                    }
                     else
                     {
-                        break_loop=true;
                         QString postfix_var=InfixToPostfix(Vars_nan[VarNames.indexOf(temp)]);
 
                         QStringList postfix_list_var=postfix_var.split(" ", QString::SkipEmptyParts);
@@ -215,16 +224,40 @@ QString backend::calculate_intern(QString text,QStringList VarNames,QList<double
                         }
                     }
                 }
+                else {
+                    Stack.push(postfix_list[i]);
+                    count_numbers++;
+                }
             }
-            if (!break_loop)
-            {//postfix_list[i].at(0)=='N'
-                QString Operand_str=postfix_list[i];
+            else if (postfix_list[i].at(0)=='N')
+            {
+                Stack.push("N");
+                count_numbers++;
+                Stack_numbers.push(postfix_list[i].remove(0,1).toDouble());
+            }
+            else
+            {
+                QMessageBox messageBox;
+                messageBox.critical(0,"Calculate error","unknown Postfix");
+                messageBox.setFixedSize(500,200);
+                return error;
+            }
+            if (count_numbers>1)
+            {//2 numbers on top
+                double Operand1;
+                QString Operand_str;
+                Operand_str=Stack.pop();
+                if (Operand_str.at(0)=='N')
+                {
+                    Operand1=Stack_numbers.pop();
+                }
+
                 while ((!Stack.isEmpty())&&(Stack.top().at(0)!='O'))
                 {
-                    if ((Operand_str.at(0)=='N')&&(Stack.top().at(0)=='N')){
+                    if (Operand_str.at(0)=='N' && Stack.top().at(0)=='N'){
                         //calculatable
-                        double Operand1=Operand_str.remove(0,1).toDouble();
-                        double Operand2=Stack.pop().remove(0,1).toDouble();
+                        Stack.pop();
+                        double Operand2=Stack_numbers.pop();
                         QString Operator=Stack.pop().remove(0,1);
                         if (Operator=="<")
                         {
@@ -257,41 +290,56 @@ QString backend::calculate_intern(QString text,QStringList VarNames,QList<double
                         else
                         {
                             QMessageBox messageBox;
-                            messageBox.critical(0,"Calculate error","unknown Operator %s",Operator);
+                            messageBox.critical(0,"Calculate error","unknown Operator :"+Operator);
                             messageBox.setFixedSize(500,200);
-                            return "";
+                            return error;
                         }
-                        Operand_str="N"+QString::number(Operand1);
                     }
                     else
                     {
                         //Not Calculatable Variables
+                        if (Operand_str.at(0)=='N')
+                        {
+                            Operand_str+=QString::number(Operand1);
+                        }
                         QString temp=Stack.pop();
                         if (Stack.isEmpty())
                         {
                             QMessageBox messageBox;
                             messageBox.critical(0,"Calculate error","something is missing");
                             messageBox.setFixedSize(500,200);
-                            return "";
+                            return error;
                         }
                         Operand_str="V"+Operand_str.remove(0,1)+Stack.pop().remove(0,1)+temp.remove(0,1);
                     }
                 }
                 Stack.push(Operand_str);
+                if (Operand_str.at(0)=='N')
+                {
+                    Stack_numbers.push(Operand1);
+                }
             }
         }
     }
     QString temp="E0";
     if (!Stack.empty())
         temp=Stack.pop();
-//    temp.remove(0,1);
+    double Value=NAN;
+    if (temp.at(0)=='N')
+    {
+        Value=Stack_numbers.pop();
+        temp+=QString::number(Value);
+    }
     if (!Stack.empty())
     {
         QMessageBox messageBox;
         messageBox.critical(0,"Calculate error","somthing remained on Stack");
         messageBox.setFixedSize(500,200);
     }
-    return temp;
+    QPair<QString,double> returnvalue;
+    returnvalue.first=temp;
+    returnvalue.second=Value;
+    return returnvalue;
 }
 
 QList<double> backend::Optimization(QString text,QStringList Paramnames,QList<double> ParamValuesmin,QList<double> ParamValuesmax,QStringList Vars_nan,bool *parameter_valid)
@@ -301,6 +349,7 @@ QList<double> backend::Optimization(QString text,QStringList Paramnames,QList<do
     QList<int> Param_number_extra_condition_not_availible={};
     QList<int> Param_number_used_variables={};
     QString postfix="";
+    QString postfix_conditions="";
 
     //pre optimization
     {
@@ -310,8 +359,8 @@ QList<double> backend::Optimization(QString text,QStringList Paramnames,QList<do
             if (!Vars_nan[i].isEmpty())
             {
                 ParamValues[i]=NAN;
-                QString calculatedValue=calculate_intern(InfixToPostfix(Paramnames[i]),Paramnames,ParamValues,Vars_nan);
-                if (calculatedValue.at(0)=='V')
+                QPair<QString,double> calculatedValues=calculate_intern(InfixToPostfix(Paramnames[i]),Paramnames,ParamValues,Vars_nan);
+                if (calculatedValues.first.at(0)=='V')
                 {
                     //some Parameter for condition missing?/can't calculate condition
                     Param_number_extra_condition_not_availible.append(i);
@@ -330,106 +379,124 @@ QList<double> backend::Optimization(QString text,QStringList Paramnames,QList<do
         }
 
         //create f'(function with penalitys for violate constraints)
-        QString newtext=text;
-        Paramnames.append("PenalityMultiplier");
-        ParamValues.append(PenalityMultiplier);
-        ParamValuesmin.append(PenalityMultiplier);
-        ParamValuesmax.append(PenalityMultiplier);
-        Vars_nan.append("");
-        for(int i=0;i<Param_number_extra_condition.length();++i)
-        {
-            //check if variable has some constrains
-            if(!isnan(ParamValuesmin[Param_number_extra_condition[i]])||!isnan(ParamValuesmax[Param_number_extra_condition[i]]))
+        QString newtext;
+        for (int second_condition_round=0;second_condition_round<2;++second_condition_round){
+            newtext="";
+            for(int i=0;i<Param_number_extra_condition.length();++i)
             {
-                newtext+="+PenalityMultiplier*[";
-                //new variables needed: MIN_I;MAX_I;Mult(const for all);IS_I=Vars_name[i]
-                if(!isnan(ParamValuesmin[Param_number_extra_condition[i]]))
+                //check if variable has some constrains
+                if(!isnan(ParamValuesmin[Param_number_extra_condition[i]])||!isnan(ParamValuesmax[Param_number_extra_condition[i]]))
                 {
-                    //MIN:
-                    Paramnames.append("MIN_"+QString::number(i));
-                    ParamValues.append(ParamValuesmin[Param_number_extra_condition[i]]);
-                    ParamValuesmin.append(ParamValuesmin[Param_number_extra_condition[i]]);
-                    ParamValuesmax.append(ParamValuesmin[Param_number_extra_condition[i]]);
-                    Vars_nan.append("");
-                    newtext+="([MIN_"+QString::number(i)+"<"+Paramnames[Param_number_extra_condition[i]]+"]/MIN_"+QString::number(i)+"-1)^2";
-                }
-
-                //check if variable has both constrains
-                if(!isnan(ParamValuesmin[Param_number_extra_condition[i]])&&!isnan(ParamValuesmax[Param_number_extra_condition[i]]))
-                {
-                    newtext+=">";
-                }
-
-                if(!isnan(ParamValuesmax[Param_number_extra_condition[i]]))
-                {
-                    //MAX:
-                    Paramnames.append("MAX_"+QString::number(i));
-                    ParamValues.append(ParamValuesmax[Param_number_extra_condition[i]]);
-                    ParamValuesmin.append(ParamValuesmax[Param_number_extra_condition[i]]);
-                    ParamValuesmax.append(ParamValuesmax[Param_number_extra_condition[i]]);
-                    Vars_nan.append("");
-                    newtext+="([MAX_"+QString::number(i)+">"+Paramnames[Param_number_extra_condition[i]]+"]/MAX_"+QString::number(i)+"-1)^2";
-                }
-
-                newtext+="]";
-
-                //  Mult*[([MIN_I<IS_I]/MIN_I-1)^2>([MAX_I>IS_I]/MAX_I-1)^2]
-                //=>Mult*max[(min[MIN_I;IS_I]/MIN_I-1)^2;(max[MAX_I;IS_I]/MAX_I-1)^2]
-            }
-        }
-
-        postfix=InfixToPostfix(newtext);
-
-        //create used variables/defiing Poststring
-        QStringList postfix_list=postfix.split(" ", QString::SkipEmptyParts);
-        for (int i=postfix_list.length()-1;i>=0;--i)
-        {
-            if (postfix_list[i].at(0)=='V')
-            {
-                QString temp=postfix_list[i];
-                temp.remove(0,1);
-                if (IsOperator(temp.at(0)))
-                {
-                    temp.remove(0,1);
-                }
-
-                //set Variables
-                int j=Paramnames.indexOf(temp);
-                if (Param_number_extra_condition.contains(j))
-                {
-                    //replace var_name with var equation
-                    QString postfix_var=InfixToPostfix(Vars_nan[j]);
-
-                    QStringList postfix_list_var=postfix_var.split(" ", QString::SkipEmptyParts);
-                    postfix_list.removeAt(i);
-                    for (int k=0;k<postfix_list_var.length();++k)
+                    newtext+="[";
+                    //new variables needed: MIN_I;MAX_I;Mult(const for all);IS_I=Vars_name[i]
+                    if(!isnan(ParamValuesmin[Param_number_extra_condition[i]]))
                     {
-                        postfix_list.insert(i,postfix_list_var[k]);
-                        ++i;
+                        //MIN:
+                        Paramnames.append("MIN_"+QString::number(i));
+                        ParamValues.append(ParamValuesmin[Param_number_extra_condition[i]]);
+                        ParamValuesmin.append(ParamValuesmin[Param_number_extra_condition[i]]);
+                        ParamValuesmax.append(ParamValuesmin[Param_number_extra_condition[i]]);
+                        Vars_nan.append("");
+                        newtext+="([0<"+Paramnames[Param_number_extra_condition[i]]+"-MIN_"+QString::number(i)+"]/(MIN_"+QString::number(i)+"+"+QString::number(epsylon_min)+"))^2";
+                    }
+
+                    //check if variable has both constrains
+                    if(!isnan(ParamValuesmin[Param_number_extra_condition[i]])&&!isnan(ParamValuesmax[Param_number_extra_condition[i]]))
+                    {
+                        newtext+=">";
+                    }
+
+                    if(!isnan(ParamValuesmax[Param_number_extra_condition[i]]))
+                    {
+                        //MAX:
+                        Paramnames.append("MAX_"+QString::number(i));
+                        ParamValues.append(ParamValuesmax[Param_number_extra_condition[i]]);
+                        ParamValuesmin.append(ParamValuesmax[Param_number_extra_condition[i]]);
+                        ParamValuesmax.append(ParamValuesmax[Param_number_extra_condition[i]]);
+                        Vars_nan.append("");
+                        newtext+="([0>"+Paramnames[Param_number_extra_condition[i]]+"-MAX_"+QString::number(i)+"]/(MAX_"+QString::number(i)+"+"+QString::number(epsylon_min)+"))^2";
+                    }
+
+                    newtext+="]+";
+
+                    //  Mult*[([0<IS_I/MIN_I-1])^2>([MAX_I>IS_I]/MAX_I-1)^2]
+                    //=>Mult*max[(min[MIN_I;IS_I]/MIN_I-1)^2;(max[MAX_I;IS_I]/MAX_I-1)^2]
+                }
+            }
+
+            if(!newtext.isEmpty())newtext=newtext.remove(newtext.length()-1,1);
+
+            postfix=InfixToPostfix(text);
+            postfix_conditions=InfixToPostfix(newtext);
+
+            //create used variables/defiing Poststring
+            QStringList postfix_list=postfix.split(" ", QString::SkipEmptyParts);
+            for(int postfix_count=0;postfix_count<2;++postfix_count)
+            {
+                if (postfix_count==1)postfix_list=postfix_conditions.split(" ", QString::SkipEmptyParts);
+
+                for (int i=postfix_list.length()-1;i>=0;--i)
+                {
+                    if (postfix_list[i].at(0)=='V')
+                    {
+                        QString temp=postfix_list[i];
+                        temp.remove(0,1);
+                        if (IsOperator(temp.at(0)))
+                        {
+                            temp.remove(0,1);
+                        }
+
+                        //set Variables
+                        int j=Paramnames.indexOf(temp);
+                        if (Param_number_extra_condition.contains(j)&& !Vars_nan[j].isEmpty())
+                        {
+                            //replace var_name with var equation
+                            QString postfix_var=InfixToPostfix(Vars_nan[j]);
+
+                            QStringList postfix_list_var=postfix_var.split(" ", QString::SkipEmptyParts);
+                            postfix_list.removeAt(i);
+                            for (int k=0;k<postfix_list_var.length();++k)
+                            {
+                                postfix_list.insert(i,postfix_list_var[k]);
+                                ++i;
+                            }
+                        }
+                        else if(Param_number_extra_condition_not_availible.contains(j))
+                        {
+                            QMessageBox messageBox;
+                            messageBox.critical(0,"Optimizations error","some Parameter missing?");
+                            messageBox.setFixedSize(500,200);
+
+                            QList<double> none={};
+                            return none;
+                        }
+                        else if ((!Param_number_used_variables.contains(j))&&(ParamValuesmin[j]!=ParamValuesmax[j]))
+                        {
+                            //add variable if not in list and changable
+                            Param_number_used_variables.append(j);
+                            Param_number_extra_condition.append(j);
+                        }
                     }
                 }
-                else if(Param_number_extra_condition_not_availible.contains(j))
-                {
-                    QMessageBox messageBox;
-                    messageBox.critical(0,"Optimizations error","some Parameter missing?");
-                    messageBox.setFixedSize(500,200);
 
-                    QList<double> none={};
-                    return none;
-                }
-                else if ((!Param_number_used_variables.contains(j))&&(ParamValuesmin[j]!=ParamValuesmax[j]))
-                {
-                    //add variable if not in list and changable
-                    Param_number_used_variables.append(j);
-                }
+                //use the calculated full postfix
+                if (postfix_count==0)postfix=postfix_list.join(" ");
+                if (postfix_count==1)postfix_conditions=postfix_list.join(" ");
             }
         }
 
-        //use the calculated full postfix
-        postfix=postfix_list.join(" ");
+        QPair<QString,double> calculatedValues=calculate_intern(postfix,Paramnames,ParamValues,Vars_nan);
+        if (calculatedValues.first.at(0)=='V')
+        {
+            QMessageBox messageBox;
+            messageBox.critical(0,"Optimizations error","something is terrible wrong");
+            messageBox.setFixedSize(500,200);
 
-        QString calculatedValue=calculate_intern(postfix,Paramnames,ParamValues,Vars_nan);
-        if (calculatedValue.at(0)=='V')
+            QList<double> none={};
+            return none;
+        }
+        calculatedValues=calculate_intern(postfix_conditions,Paramnames,ParamValues,Vars_nan);
+        if (calculatedValues.first.at(0)=='V')
         {
             QMessageBox messageBox;
             messageBox.critical(0,"Optimizations error","something is terrible wrong");
@@ -440,33 +507,110 @@ QList<double> backend::Optimization(QString text,QStringList Paramnames,QList<do
         }
     }
 
-    double bestvalue=calculate_intern(postfix,Paramnames,ParamValues,Vars_nan).remove(0,1).toDouble();
-    //search Optima
-
-    if (isnan(bestvalue))
+    double bestvalue_base=calculate_intern(postfix,Paramnames,ParamValues,Vars_nan).second;
+    double bestvalue_condition_error=calculate_intern(postfix_conditions,Paramnames,ParamValues,Vars_nan).second;
+    if (isnan(bestvalue_base))
     {
-        bestvalue=std::numeric_limits<double>::max();
+        bestvalue_base=std::numeric_limits<double>::max();
+    }
+    if (isnan(bestvalue_condition_error))
+    {
+        bestvalue_condition_error=std::numeric_limits<double>::max();
     }
 
+    double PenalityMultiplier=PenalityMultiplier_base;
+
+    double bestvalue=bestvalue_base+bestvalue_condition_error*PenalityMultiplier;
+    //search Optima
+
     //simple gradient descent Optimization approach
-    double oldbestvalue=bestvalue+1;
+    double oldbestvalue=-std::numeric_limits<double>::max();
 /*TODO BETTER STOP CONDITION*/
-    while(oldbestvalue!=bestvalue)
+    QList<double> variable_change={};
+    QList<double> gradient_sum={};
+    QList<double> average_gradient_running={};
+    QList<double> average_parameter_running={};
+    QList<double> average_gradient_momentum={};
+    //QList<double> average_gradient_running_error={};
+    for(int i=0;i<Param_number_used_variables.length();++i)
     {
+        //initialize variable_change
+        variable_change.append(ny);
+        //initialize average_gradient_running
+        average_gradient_running.append(0);
+        average_parameter_running.append(0);
+        average_gradient_momentum.append(0);
+
+        //average_gradient_running_error.append(0);
+        //initialize gradient_sum
+        gradient_sum.append(0);
+    }
+
+    int round=0;
+    while(round<max_rounds)
+    {
+        ++round;
+
         oldbestvalue=bestvalue;
         //determine Gradient
-        double grad_base_value=calculate_intern(postfix,Paramnames,ParamValues,Vars_nan).remove(0,1).toDouble();
         QList<double> gradient={};
+        QList<double> gradient_error={};
         for(int i=0;i<Param_number_used_variables.length();++i)
         {
             double ParamValueold=ParamValues[Param_number_used_variables[i]];
             double epsylon=ParamValues[Param_number_used_variables[i]]*epsylon_divider;
             if (epsylon<0)epsylon=-epsylon;
             if (epsylon<epsylon_min)epsylon=epsylon_min;
+            ParamValues[Param_number_used_variables[i]]-=epsylon/2;
+            double grad_old_value_base=calculate_intern(postfix,Paramnames,ParamValues,Vars_nan).second;
+            double grad_old_value_condition=calculate_intern(postfix_conditions,Paramnames,ParamValues,Vars_nan).second;
             ParamValues[Param_number_used_variables[i]]+=epsylon;
-            double grad_new_value=calculate_intern(postfix,Paramnames,ParamValues,Vars_nan).remove(0,1).toDouble();
+            double grad_new_value_base=calculate_intern(postfix,Paramnames,ParamValues,Vars_nan).second;
+            double grad_new_value_condition=calculate_intern(postfix_conditions,Paramnames,ParamValues,Vars_nan).second;
             ParamValues[Param_number_used_variables[i]]=ParamValueold;
-            gradient.append((grad_base_value-grad_new_value)/epsylon);
+            gradient.append((grad_old_value_base-grad_new_value_base)/epsylon);
+            gradient_error.append((grad_old_value_condition-grad_new_value_condition)/epsylon);
+        }
+
+        for(int i=0;i<Param_number_used_variables.length();++i)
+        {
+            //Variant 1 integreated singel strength
+            //gradient_sum[i]=gradient[i]+PenalityMultiplier_base*100*gradient_error[i];
+            //Variant 2 integreated dynamic
+            gradient_sum[i]=(gradient[i]+pow(PenalityMultiplier_time*round,PenalityMultiplier_time_pot)*gradient_error[i]);
+
+            //Variant 1 normal gradient descent
+            //variable_change[i]=variable_change[i]+ny*gradient_sum[i];
+            //Variant 2 momentum gradient descent
+            //variable_change[i]=ny_momentum*variable_change[i]+ny*gradient_sum[i];
+            //Variant 3 Adadelta -ny/RMS(grad)*grad
+            /*
+            average_gradient_running[i]=ny_momentum*average_gradient_running[i]+(1-ny_momentum)*pow(gradient_sum[i],2);
+            average_parameter_running[i]=ny_momentum*average_parameter_running[i]+(1-ny_momentum)*pow(variable_change[i],2);
+
+            //average_gradient_running_error[i]=ny_momentum*average_gradient_running_error[i]+(1-ny_momentum)*pow(gradient_error[i],2);
+
+            double RMS_grad=qSqrt(average_gradient_running[i]+epsylon_min);
+            double RMS_para=qSqrt(average_parameter_running[i]+epsylon_min);
+
+            //double RMS_grad_error=qSqrt(average_gradient_running_error[i]+epsylon_min);
+            variable_change[i]=RMS_para*gradient_sum[i]/RMS_grad;
+            */
+            //Variant 4 Adam
+            average_gradient_running[i]=ny_momentum*average_gradient_running[i]+(1-ny_momentum)*pow(gradient_sum[i],2);
+            average_gradient_momentum[i]=ny_momentum*average_gradient_momentum[i]+(1-ny_momentum)*gradient_sum[i];
+            average_parameter_running[i]=ny_momentum*average_parameter_running[i]+(1-ny_momentum)*pow(variable_change[i],2);
+
+            //average_gradient_running_error[i]=ny_momentum*average_gradient_running_error[i]+(1-ny_momentum)*pow(gradient_error[i],2);
+
+            double RMS_momentum=average_gradient_momentum[i]/(1-pow(ny_momentum,round));
+            double RMS_grad=average_gradient_running[i]/(1-pow(ny_momentum,round));
+            RMS_grad=qSqrt(RMS_grad+epsylon_min);
+            double RMS_para=average_parameter_running[i]/(1-pow(ny_momentum,round));
+            RMS_para=qSqrt(RMS_para+epsylon_min);
+
+            //double RMS_grad_error=qSqrt(average_gradient_running_error[i]+epsylon_min);
+            variable_change[i]=RMS_para*RMS_momentum/RMS_grad;
         }
 
         bool gradient_is_zero=false;
@@ -476,62 +620,49 @@ QList<double> backend::Optimization(QString text,QStringList Paramnames,QList<do
             //use gradient/ mutate Parameter
             for(int i=0;i<Param_number_used_variables.length();++i)
             {
-                ParamValues[Param_number_used_variables[i]]+=gradient[i];
+                double test=ParamValues[Param_number_used_variables[i]];
+                test+=variable_change[i];
+                ParamValues[Param_number_used_variables[i]]+=variable_change[i];
             }
 
-            //limit values by conditions(constasts)
-            for(int i=0;i<Param_number_used_variables.length();++i)
-            {
-                if (ParamValues[Param_number_used_variables[i]]<ParamValuesmin[Param_number_used_variables[i]])
-                {
-                    //lower than minimum->=minimum
-                    ParamValues[Param_number_used_variables[i]]=ParamValuesmin[Param_number_used_variables[i]];
-                }
-
-                if (ParamValues[Param_number_used_variables[i]]>ParamValuesmax[Param_number_used_variables[i]])
-                {
-                    //bigger than maximum->=maximum
-                    ParamValues[Param_number_used_variables[i]]=ParamValuesmax[Param_number_used_variables[i]];
-                }
-            }
-
-            //check if conditions are ok
-            //integrated as penalitys
-            /*
-            bool conditions_are_ok=true;
-            for(int i=0;i<Param_number_extra_condition.length();++i)
-            {
-                double value_to_check=calculate_intern(InfixToPostfix(Paramnames[Param_number_extra_condition[i]]),Paramnames,ParamValues,Vars_nan).remove(0,1).toDouble();
-                if ((value_to_check<ParamValuesmin[Param_number_extra_condition[i]])||(value_to_check>ParamValuesmax[Param_number_extra_condition[i]]))
-                {
-                    //Check Failed
-                    conditions_are_ok=false;
-                }
-            }
-
-            if (conditions_are_ok)
-            */
             {
                 //calculate new funktion value
-                double calculated_value=calculate_intern(postfix,Paramnames,ParamValues,Vars_nan).remove(0,1).toDouble();
+                double calculated_value_base=calculate_intern(postfix,Paramnames,ParamValues,Vars_nan).second;
+                double calculated_value_condition_error=calculate_intern(postfix_conditions,Paramnames,ParamValues,Vars_nan).second;
+
+                double calculated_value=calculated_value_base+calculated_value_condition_error*PenalityMultiplier;
+/*
                 if (bestvalue>calculated_value)
-                {
+                {*/
+                    bestvalue_condition_error=calculated_value_condition_error;
+                    bestvalue_base=calculated_value_base;
                     bestvalue=calculated_value;
+                    break;
+                /*}
+                else if(bestvalue_condition_error>calculated_value_condition_error)
+                {
+                    bestvalue_condition_error=calculated_value_condition_error;
+                    bestvalue_base=calculated_value_base;
+
+                    PenalityMultiplier*=2;
+
+                    bestvalue=calculated_value_base+calculated_value_condition_error;
+                    break;
                 }
                 else
                 {
                     ParamValues=oldparam_values;
-                    for(int i=0;i<gradient.length();++i)gradient[i]/=2;
-                    //gradient to big(jump over) -> try with gradient/2
-                }
+                    for(int i=0;i<variable_change.length();++i)variable_change[i]/=2;
+                    //variable_change to big(jump over) -> try with variable_change/2
+                }*/
             }
             gradient_is_zero=true;
-            for(int i=0;i<gradient.length();++i)
+            for(int i=0;i<variable_change.length();++i)
             {
-                double epsylon=ParamValues[Param_number_used_variables[i]]*epsylon_divider;
+                double epsylon=ParamValues[Param_number_used_variables[i]]*epsylon_divider/1000;
                 if (epsylon<0)epsylon=-epsylon;
                 if (epsylon<epsylon_min)epsylon=epsylon_min;
-                if ((gradient[i]>=epsylon)||(gradient[i]<=-epsylon))gradient_is_zero=false;
+                if ((variable_change[i]>=epsylon)||(variable_change[i]<=-epsylon))gradient_is_zero=false;
                 //if gradient<epsylon for all Variables  => (epsylon is steplength) => gradient=0 => optimum
             }
         }
@@ -543,16 +674,9 @@ QList<double> backend::Optimization(QString text,QStringList Paramnames,QList<do
     //finalize: return best ParameterValues-> Values who Violate most less(sum of all violations)
 
     //check if conditions are ok
-    bool conditions_are_ok=true;
-    for(int i=0;i<Param_number_extra_condition.length();++i)
-    {
-        double value_to_check=calculate_intern(InfixToPostfix(Paramnames[Param_number_extra_condition[i]]),Paramnames,ParamValues,Vars_nan).remove(0,1).toDouble();
-        if ((value_to_check<ParamValuesmin[Param_number_extra_condition[i]])||(value_to_check>ParamValuesmax[Param_number_extra_condition[i]]))
-        {
-            //Check Failed
-            conditions_are_ok=false;
-        }
-    }
+    bool conditions_are_ok=false;
+    if (calculate_intern(postfix_conditions,Paramnames,ParamValues,Vars_nan).second==0)conditions_are_ok=true;
+
     if (conditions_are_ok)
     {
         *parameter_valid=true;
@@ -560,98 +684,6 @@ QList<double> backend::Optimization(QString text,QStringList Paramnames,QList<do
     else
     {
         *parameter_valid=false;
-    }
-    return ParamValues;
-}
-
-QList<double> backend::Optimization_alternativ(QString text,QStringList Paramnames,QList<double> ParamValuesmin,QList<double> ParamValuesmax,QStringList Vars_nan,bool minimization){
-    //check if Optimization possible is
-    QList<double> ParamValues=ParamValuesmin;
-    //make sting calculateable -> infix to postfix
-    QString postfix=InfixToPostfix(text);
-
-    postfix.replace(" +"," ");
-    QString calculatedValue=calculate_intern(postfix,Paramnames,ParamValues,Vars_nan);
-    if (calculatedValue.at(0)=='V')
-    {
-        QMessageBox messageBox;
-        messageBox.critical(0,"Optimizations error","some Parameter missing?\n\rUse minimal values instead");
-        messageBox.setFixedSize(500,200);
-    }
-    else
-    {
-        //search Optima
-        QList<double> ParamValuesdelta=ParamValuesmin;
-        for(int i=0;i<Paramnames.length();++i)
-        {
-            if (!isnan(ParamValuesmin[i]))
-            {
-                ParamValues[i]=(ParamValuesmin[i]+ParamValuesmax[i])/2;
-                //start with gradient =50%
-                ParamValuesdelta[i]=(ParamValues[i]+ParamValuesmin[i])/2;
-            }
-        }
-        double bestvalue=calculate_intern(postfix,Paramnames,ParamValues,Vars_nan).remove(0,1).toDouble();
-
-        if (isnan(bestvalue))
-        {
-            if (minimization)bestvalue=std::numeric_limits<double>::max();
-            else bestvalue=0;
-        }
-
-        //Hill Climb approach
-        double oldbestvalue;
-        do {
-            oldbestvalue=bestvalue;
-            //search best direction
-            for(int i=0;i<Paramnames.length();++i)
-                //nan cant be optimized(is funktion of other variables)
-                if (!isnan(ParamValuesmin[i]))
-                {
-                    //test with minima
-                    double oldvalue=ParamValues[i];
-                    ParamValues[i]=ParamValuesmax[i];
-                    double tempvalue=calculate_intern(postfix,Paramnames,ParamValues,Vars_nan).remove(0,1).toDouble();
-                    if (((bestvalue>tempvalue)&&minimization)||((bestvalue<tempvalue)&&!minimization))
-                    {
-                        bestvalue=tempvalue;
-                    }
-                    else
-                    {
-                        ParamValues[i]=oldvalue;
-                    }
-
-                    //test with maxima
-                    oldvalue=ParamValues[i];
-                    ParamValues[i]=ParamValuesmin[i];
-                    tempvalue=calculate_intern(postfix,Paramnames,ParamValues,Vars_nan).remove(0,1).toDouble();
-                    if (((bestvalue>tempvalue)&&minimization)||((bestvalue<tempvalue)&&!minimization))
-                    {
-                        bestvalue=tempvalue;
-                    }
-                    else
-                    {
-                        ParamValues[i]=oldvalue;
-                    }
-
-                    //test random value between minima and maxima
-                    oldvalue=ParamValues[i];
-                    ParamValues[i]=randomnumber(ParamValuesmin[i],ParamValuesmax[i]);
-                    tempvalue=calculate_intern(postfix,Paramnames,ParamValues,Vars_nan).remove(0,1).toDouble();
-                    if (((bestvalue>tempvalue)&&minimization)||((bestvalue<tempvalue)&&!minimization))
-                    {
-                        bestvalue=tempvalue;
-                        QMessageBox messageBox;
-                        messageBox.critical(0,"Optimizations MSG","Random is better!!");
-                        messageBox.setFixedSize(500,200);
-                    }
-                    else
-                    {
-                        ParamValues[i]=oldvalue;
-                    }
-                }
-        }
-        while(oldbestvalue!=bestvalue);
     }
     return ParamValues;
 }

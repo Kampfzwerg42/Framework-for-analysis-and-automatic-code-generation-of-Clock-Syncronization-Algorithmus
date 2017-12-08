@@ -219,7 +219,9 @@ void Frontend_class::on_pushButton_clicked()
                 }
             }
 
-            if (!optimization_string.isEmpty())
+            if (optimization_string.isEmpty())
+                optimization_string="0";
+            if (!ui->Opt_Error->isChecked())
             {
                 QList<double> Param_calculated=calculater->Optimization(optimization_string,Paramnames,ParamValuesmin,ParamValuesmax,ParamValues_nan,&valid_parameter);
                 if (!Param_calculated.isEmpty()) ParamValues=Param_calculated;
