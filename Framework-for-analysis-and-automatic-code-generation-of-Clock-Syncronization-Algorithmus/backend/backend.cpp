@@ -50,6 +50,7 @@ QString backend::InfixToPostfix(QString infix)
     QStack<QChar> s;
     QString postfix = "";
     infix.remove(" ");
+    infix.replace(QRegExp("([0-9])e([+-])"),"\\1*10^\\2");
     infix.replace('[','(');
     infix.replace('{','(');
     infix.replace(']',')');
@@ -342,7 +343,7 @@ QPair<QString,double>  backend::calculate_intern(QString text,QStringList VarNam
     return returnvalue;
 }
 
-QList<double> backend::Optimization(QString text,QStringList Paramnames,QList<double> ParamValuesmin,QList<double> ParamValuesmax,QStringList Vars_nan,bool *parameter_valid)
+QList<double> backend::Optimization(QString text,QStringList Paramnames,QList<double> ParamValuesmin,QList<double> ParamValuesmax,QStringList Vars_nan,double *condition_error)
 {
     QList<double> ParamValues=ParamValuesmin;
     QList<int> Param_number_extra_condition={};
@@ -352,6 +353,8 @@ QList<double> backend::Optimization(QString text,QStringList Paramnames,QList<do
     QString postfix_conditions="";
 
     //pre optimization
+    //in funktionparameter
+    //out postfix-notations,numberlists
     {
         //check for all Variables with equations if all nessesary variables are availible
         for (int i=0;i<Vars_nan.length();++i)
@@ -382,6 +385,7 @@ QList<double> backend::Optimization(QString text,QStringList Paramnames,QList<do
         QString newtext;
         for (int second_condition_round=0;second_condition_round<2;++second_condition_round){
             newtext="";
+            //generate function for constrains
             for(int i=0;i<Param_number_extra_condition.length();++i)
             {
                 //check if variable has some constrains
@@ -397,7 +401,7 @@ QList<double> backend::Optimization(QString text,QStringList Paramnames,QList<do
                         ParamValuesmin.append(ParamValuesmin[Param_number_extra_condition[i]]);
                         ParamValuesmax.append(ParamValuesmin[Param_number_extra_condition[i]]);
                         Vars_nan.append("");
-                        newtext+="([0<"+Paramnames[Param_number_extra_condition[i]]+"-MIN_"+QString::number(i)+"]/(MIN_"+QString::number(i)+"+"+QString::number(epsylon_min)+"))^2";
+                        newtext+="([0<"+Paramnames[Param_number_extra_condition[i]]+"-MIN_"+QString::number(i)+"]/(MIN_"+QString::number(i)+"+"+QString::number(epsylon_div_save)+"))^2";
                     }
 
                     //check if variable has both constrains
@@ -414,13 +418,13 @@ QList<double> backend::Optimization(QString text,QStringList Paramnames,QList<do
                         ParamValuesmin.append(ParamValuesmax[Param_number_extra_condition[i]]);
                         ParamValuesmax.append(ParamValuesmax[Param_number_extra_condition[i]]);
                         Vars_nan.append("");
-                        newtext+="([0>"+Paramnames[Param_number_extra_condition[i]]+"-MAX_"+QString::number(i)+"]/(MAX_"+QString::number(i)+"+"+QString::number(epsylon_min)+"))^2";
+                        newtext+="([0>"+Paramnames[Param_number_extra_condition[i]]+"-MAX_"+QString::number(i)+"]/(MAX_"+QString::number(i)+"+"+QString::number(epsylon_div_save)+"))^2";
                     }
 
                     newtext+="]+";
 
-                    //  Mult*[([0<IS_I/MIN_I-1])^2>([MAX_I>IS_I]/MAX_I-1)^2]
-                    //=>Mult*max[(min[MIN_I;IS_I]/MIN_I-1)^2;(max[MAX_I;IS_I]/MAX_I-1)^2]
+                    //  [([0<IS_I/MIN_I-1])^2>([MAX_I>IS_I]/MAX_I-1)^2]
+                    //=>max[(min[MIN_I;IS_I]/MIN_I-1)^2;(max[MAX_I;IS_I]/MAX_I-1)^2]
                 }
             }
 
@@ -429,7 +433,7 @@ QList<double> backend::Optimization(QString text,QStringList Paramnames,QList<do
             postfix=InfixToPostfix(text);
             postfix_conditions=InfixToPostfix(newtext);
 
-            //create used variables/defiing Poststring
+            //create used variables/make Postfixstring from infixstring
             QStringList postfix_list=postfix.split(" ", QString::SkipEmptyParts);
             for(int postfix_count=0;postfix_count<2;++postfix_count)
             {
@@ -485,8 +489,9 @@ QList<double> backend::Optimization(QString text,QStringList Paramnames,QList<do
             }
         }
 
+        //check if calculations work without problems
         QPair<QString,double> calculatedValues=calculate_intern(postfix,Paramnames,ParamValues,Vars_nan);
-        if (calculatedValues.first.at(0)=='V')
+        if (calculatedValues.first.at(0)!='N')
         {
             QMessageBox messageBox;
             messageBox.critical(0,"Optimizations error","something is terrible wrong");
@@ -496,7 +501,7 @@ QList<double> backend::Optimization(QString text,QStringList Paramnames,QList<do
             return none;
         }
         calculatedValues=calculate_intern(postfix_conditions,Paramnames,ParamValues,Vars_nan);
-        if (calculatedValues.first.at(0)=='V')
+        if (calculatedValues.first.at(0)!='N')
         {
             QMessageBox messageBox;
             messageBox.critical(0,"Optimizations error","something is terrible wrong");
@@ -518,14 +523,6 @@ QList<double> backend::Optimization(QString text,QStringList Paramnames,QList<do
         bestvalue_condition_error=std::numeric_limits<double>::max();
     }
 
-    double PenalityMultiplier=PenalityMultiplier_base;
-
-    double bestvalue=bestvalue_base+bestvalue_condition_error*PenalityMultiplier;
-    //search Optima
-
-    //simple gradient descent Optimization approach
-    double oldbestvalue=-std::numeric_limits<double>::max();
-/*TODO BETTER STOP CONDITION*/
     QList<double> variable_change={};
     QList<double> gradient_sum={};
     QList<double> average_gradient_running={};
@@ -546,144 +543,297 @@ QList<double> backend::Optimization(QString text,QStringList Paramnames,QList<do
         gradient_sum.append(0);
     }
 
-    int round=0;
-    while(round<max_rounds)
-    {
-        ++round;
+    bestvalue_base=calculate_intern(postfix,Paramnames,ParamValues,Vars_nan).second;
+    bestvalue_condition_error=calculate_intern(postfix_conditions,Paramnames,ParamValues,Vars_nan).second;
+    QList<double> ParamValues_old=ParamValues;
 
-        oldbestvalue=bestvalue;
-        //determine Gradient
-        QList<double> gradient={};
-        QList<double> gradient_error={};
-        for(int i=0;i<Param_number_used_variables.length();++i)
+    //search for Optima
+    //use gradient descent Optimization approach
+    int round=0;
+    //do optimizations while Time is left
+    while((round<max_rounds))
+    {
+        bool gradient_is_zero=false;
+
+        //start 1 optimisation => gain a local optima
+        while((round<max_rounds)&&!gradient_is_zero)
         {
-            double ParamValueold=ParamValues[Param_number_used_variables[i]];
-            double epsylon=ParamValues[Param_number_used_variables[i]]*epsylon_divider;
-            if (epsylon<0)epsylon=-epsylon;
-            if (epsylon<epsylon_min)epsylon=epsylon_min;
-            ParamValues[Param_number_used_variables[i]]-=epsylon/2;
+            ++round;
+            //determine Gradient
+            QList<double> gradient={};
+            QList<double> gradient_error={};
             double grad_old_value_base=calculate_intern(postfix,Paramnames,ParamValues,Vars_nan).second;
             double grad_old_value_condition=calculate_intern(postfix_conditions,Paramnames,ParamValues,Vars_nan).second;
-            ParamValues[Param_number_used_variables[i]]+=epsylon;
-            double grad_new_value_base=calculate_intern(postfix,Paramnames,ParamValues,Vars_nan).second;
-            double grad_new_value_condition=calculate_intern(postfix_conditions,Paramnames,ParamValues,Vars_nan).second;
-            ParamValues[Param_number_used_variables[i]]=ParamValueold;
-            gradient.append((grad_old_value_base-grad_new_value_base)/epsylon);
-            gradient_error.append((grad_old_value_condition-grad_new_value_condition)/epsylon);
-        }
 
-        for(int i=0;i<Param_number_used_variables.length();++i)
-        {
-            //Variant 1 integreated singel strength
-            //gradient_sum[i]=gradient[i]+PenalityMultiplier_base*100*gradient_error[i];
-            //Variant 2 integreated dynamic
-            gradient_sum[i]=(gradient[i]+pow(PenalityMultiplier_time*round,PenalityMultiplier_time_pot)*gradient_error[i]);
-
-            //Variant 1 normal gradient descent
-            //variable_change[i]=variable_change[i]+ny*gradient_sum[i];
-            //Variant 2 momentum gradient descent
-            //variable_change[i]=ny_momentum*variable_change[i]+ny*gradient_sum[i];
-            //Variant 3 Adadelta -ny/RMS(grad)*grad
-            /*
-            average_gradient_running[i]=ny_momentum*average_gradient_running[i]+(1-ny_momentum)*pow(gradient_sum[i],2);
-            average_parameter_running[i]=ny_momentum*average_parameter_running[i]+(1-ny_momentum)*pow(variable_change[i],2);
-
-            //average_gradient_running_error[i]=ny_momentum*average_gradient_running_error[i]+(1-ny_momentum)*pow(gradient_error[i],2);
-
-            double RMS_grad=qSqrt(average_gradient_running[i]+epsylon_min);
-            double RMS_para=qSqrt(average_parameter_running[i]+epsylon_min);
-
-            //double RMS_grad_error=qSqrt(average_gradient_running_error[i]+epsylon_min);
-            variable_change[i]=RMS_para*gradient_sum[i]/RMS_grad;
-            */
-            //Variant 4 Adam
-            average_gradient_running[i]=ny_momentum*average_gradient_running[i]+(1-ny_momentum)*pow(gradient_sum[i],2);
-            average_gradient_momentum[i]=ny_momentum*average_gradient_momentum[i]+(1-ny_momentum)*gradient_sum[i];
-            average_parameter_running[i]=ny_momentum*average_parameter_running[i]+(1-ny_momentum)*pow(variable_change[i],2);
-
-            //average_gradient_running_error[i]=ny_momentum*average_gradient_running_error[i]+(1-ny_momentum)*pow(gradient_error[i],2);
-
-            double RMS_momentum=average_gradient_momentum[i]/(1-pow(ny_momentum,round));
-            double RMS_grad=average_gradient_running[i]/(1-pow(ny_momentum,round));
-            RMS_grad=qSqrt(RMS_grad+epsylon_min);
-            double RMS_para=average_parameter_running[i]/(1-pow(ny_momentum,round));
-            RMS_para=qSqrt(RMS_para+epsylon_min);
-
-            //double RMS_grad_error=qSqrt(average_gradient_running_error[i]+epsylon_min);
-            variable_change[i]=RMS_para*RMS_momentum/RMS_grad;
-        }
-
-        bool gradient_is_zero=false;
-        while(!gradient_is_zero){
-            QList<double> oldparam_values=ParamValues;
-
-            //use gradient/ mutate Parameter
+            //can be parallelized
             for(int i=0;i<Param_number_used_variables.length();++i)
             {
-                double test=ParamValues[Param_number_used_variables[i]];
-                test+=variable_change[i];
-                ParamValues[Param_number_used_variables[i]]+=variable_change[i];
-            }
-
-            {
-                //calculate new funktion value
-                double calculated_value_base=calculate_intern(postfix,Paramnames,ParamValues,Vars_nan).second;
-                double calculated_value_condition_error=calculate_intern(postfix_conditions,Paramnames,ParamValues,Vars_nan).second;
-
-                double calculated_value=calculated_value_base+calculated_value_condition_error*PenalityMultiplier;
-/*
-                if (bestvalue>calculated_value)
-                {*/
-                    bestvalue_condition_error=calculated_value_condition_error;
-                    bestvalue_base=calculated_value_base;
-                    bestvalue=calculated_value;
-                    break;
-                /*}
-                else if(bestvalue_condition_error>calculated_value_condition_error)
-                {
-                    bestvalue_condition_error=calculated_value_condition_error;
-                    bestvalue_base=calculated_value_base;
-
-                    PenalityMultiplier*=2;
-
-                    bestvalue=calculated_value_base+calculated_value_condition_error;
-                    break;
-                }
-                else
-                {
-                    ParamValues=oldparam_values;
-                    for(int i=0;i<variable_change.length();++i)variable_change[i]/=2;
-                    //variable_change to big(jump over) -> try with variable_change/2
-                }*/
-            }
-            gradient_is_zero=true;
-            for(int i=0;i<variable_change.length();++i)
-            {
-                double epsylon=ParamValues[Param_number_used_variables[i]]*epsylon_divider/1000;
+                //calculate epsylon
+                double ParamValueold=ParamValues[Param_number_used_variables[i]];
+                double epsylon=ParamValues[Param_number_used_variables[i]]*epsylon_divider;
                 if (epsylon<0)epsylon=-epsylon;
                 if (epsylon<epsylon_min)epsylon=epsylon_min;
-                if ((variable_change[i]>=epsylon)||(variable_change[i]<=-epsylon))gradient_is_zero=false;
-                //if gradient<epsylon for all Variables  => (epsylon is steplength) => gradient=0 => optimum
+
+                //calculate points x+/-epsylon/2 for every x in variables
+                ParamValues[Param_number_used_variables[i]]-=epsylon/2;
+                double grad_low_value_base=calculate_intern(postfix,Paramnames,ParamValues,Vars_nan).second;
+                double grad_low_value_condition=calculate_intern(postfix_conditions,Paramnames,ParamValues,Vars_nan).second;
+                ParamValues[Param_number_used_variables[i]]+=epsylon;
+                double grad_hight_value_base=calculate_intern(postfix,Paramnames,ParamValues,Vars_nan).second;
+                double grad_hight_value_condition=calculate_intern(postfix_conditions,Paramnames,ParamValues,Vars_nan).second;
+                ParamValues[Param_number_used_variables[i]]=ParamValueold;
+
+                //set gradients for every x in variables
+
+                if ((grad_hight_value_base>grad_old_value_base)&&(grad_old_value_base<grad_low_value_base))
+                    //lowest point in a epysilon range => gradient is 0
+                    gradient.append(0);
+                else
+                   gradient.append((grad_low_value_base-grad_hight_value_base)/epsylon);
+
+                if ((grad_hight_value_condition>grad_old_value_condition)&&(grad_old_value_condition<grad_low_value_condition))
+                    //lowest point in a epysilon range => gradient is 0
+                    gradient_error.append(0);
+                else
+                    gradient_error.append((grad_low_value_condition-grad_hight_value_condition)/epsylon);
+
+                if (isnan(gradient[i])||isnan(gradient_error[i]))
+                {
+                    //error
+                }
+                if (isinf(gradient[i])||isinf(gradient_error[i]))
+                {
+                    //error
+                }
+            }
+
+            //calculate base Steplength/direction from the 2 gradients
+            //can be parallelized
+            for(int i=0;i<Param_number_used_variables.length();++i)
+            {
+                //Variant 1 integreated singel strength
+                //gradient_sum[i]=gradient[i]+PenalityMultiplier_base*100*gradient_error[i];
+                //Variant 2 integreated dynamic
+                //gradient_sum[i]=(gradient[i]+pow(PenalityMultiplier_time*round,PenalityMultiplier_time_pot)*gradient_error[i]);
+                //Variant 3 error is always more important then optimum
+                gradient_sum[i]=gradient_error[i];
+                if  ((gradient_sum[i]<epsylon_min)&&(gradient_error[i]>-epsylon_min)) gradient_sum[i]=gradient[i];
+
+                //Variant 1 normal gradient descent
+                //variable_change[i]=variable_change[i]+ny*gradient_sum[i];
+                //Variant 2 momentum gradient descent
+                //variable_change[i]=ny_momentum*variable_change[i]+ny*gradient_sum[i];
+                //Variant 3 Adadelta -ny/RMS(grad)*grad
+                /*
+                average_gradient_running[i]=ny_momentum*average_gradient_running[i]+(1-ny_momentum)*pow(gradient_sum[i],2);
+                average_parameter_running[i]=ny_momentum*average_parameter_running[i]+(1-ny_momentum)*pow(variable_change[i],2);
+
+                //average_gradient_running_error[i]=ny_momentum*average_gradient_running_error[i]+(1-ny_momentum)*pow(gradient_error[i],2);
+
+                double RMS_grad=qSqrt(average_gradient_running[i]+epsylon_div_save);
+                double RMS_para=qSqrt(average_parameter_running[i]+epsylon_div_save);
+
+                //double RMS_grad_error=qSqrt(average_gradient_running_error[i]+epsylon_div_save);
+                variable_change[i]=RMS_para*gradient_sum[i]/RMS_grad;
+                */
+                //Variant 4 Adam
+                /*
+                average_gradient_running[i]=ny_momentum*average_gradient_running[i]+(1-ny_momentum)*pow(gradient_sum[i],2);
+                average_gradient_momentum[i]=ny_momentum*average_gradient_momentum[i]+(1-ny_momentum)*gradient_sum[i];
+                average_parameter_running[i]=ny_momentum*average_parameter_running[i]+(1-ny_momentum)*pow(variable_change[i],2);
+
+                //average_gradient_running_error[i]=ny_momentum*average_gradient_running_error[i]+(1-ny_momentum)*pow(gradient_error[i],2);
+
+                double RMS_momentum=average_gradient_momentum[i]/(1-pow(ny_momentum,round));
+                double RMS_grad=average_gradient_running[i]/(1-pow(ny_momentum,round));
+                RMS_grad=qSqrt(RMS_grad+epsylon_div_save);
+                double RMS_para=average_parameter_running[i]/(1-pow(ny_momentum,round));
+                RMS_para=qSqrt(RMS_para+epsylon_div_save);
+
+                //double RMS_grad_error=qSqrt(average_gradient_running_error[i]+epsylon_div_save);
+                variable_change[i]=RMS_para*RMS_momentum/RMS_grad;
+                //*/
+                //Variant 5 hillclimb gradient descent, Armijo-rule like
+                //gradient-> direction of descending
+                //->go that direction if ascending you go to far
+                //low varianz?
+                variable_change[i]=gradient_sum[i];
+            }
+
+            //actualize parameter by 1 step
+            gradient_is_zero=true;
+            //can be parallelized
+            for(int var_num=0;var_num<Param_number_used_variables.length();++var_num)
+            {
+                bool gradient_i_is_zero=false;
+
+                //calculate Armijo lines
+                double Armijo_base=gradient[var_num];
+                if (Armijo_base<0)Armijo_base=-Armijo_base;
+                double Armijo_error=gradient_error[var_num];
+                if (Armijo_error<0)Armijo_error=-Armijo_error;
+                double Armijo_sum=gradient_sum[var_num];
+                if (Armijo_sum<0)Armijo_sum=-Armijo_sum;
+                double beta=1;
+
+                bool alpha_ascending=false;
+                bool alpha_descending=false;
+
+                double lastvalue_base=calculate_intern(postfix,Paramnames,ParamValues,Vars_nan).second;
+                double lastvalue_condition_error=calculate_intern(postfix_conditions,Paramnames,ParamValues,Vars_nan).second;
+
+                bool sucsess=false;
+
+                while(!sucsess)
+                {
+                    beta=0;
+                    if (beta<beta_min){
+                        beta=0;
+                        sucsess=true;
+                    }
+                    double alpha=alpha_start;
+                    gradient_i_is_zero=false;
+                    //set new Value for Parameter var_num
+                    while(!gradient_i_is_zero)
+                    {
+                        //save old value of the Parameter
+                        double oldparam_value=ParamValues[Param_number_used_variables[var_num]];
+                        //change Value
+                        {
+                            //check if new steplength is valid or to small
+                            gradient_i_is_zero=true;
+                            double epsylon=ParamValues[Param_number_used_variables[var_num]]*epsylon_divider/2;
+                            if (epsylon<0)epsylon=-epsylon;
+                            if (epsylon<epsylon_min)epsylon=epsylon_min;
+                            if (((alpha*variable_change[var_num])>=epsylon)||((alpha*variable_change[var_num])<=-epsylon))gradient_i_is_zero=false;
+                            //if gradient<epsylon for Variable  => (epsylon is steplength) => gradient=0 => optimum
+
+                            double change=alpha*variable_change[var_num];
+                            //set maximum change for this round
+                            if (change>max_variable_change)change=max_variable_change;
+                            if (change<-max_variable_change)change=-max_variable_change;
+                            ParamValues[Param_number_used_variables[var_num]]+=change;
+
+                            //cut of extrem violations of variables
+                            if (ParamValues[Param_number_used_variables[var_num]]<ParamValuesmin[Param_number_used_variables[var_num]]/2)
+                            {
+                                variable_change[var_num]=-max_variable_change;
+                                ParamValues[Param_number_used_variables[var_num]]=ParamValuesmin[Param_number_used_variables[var_num]]/2;
+                            }
+                            if (ParamValues[Param_number_used_variables[var_num]]>ParamValuesmax[Param_number_used_variables[var_num]]*2)
+                            {
+                                variable_change[var_num]=+max_variable_change;
+                                ParamValues[Param_number_used_variables[var_num]]=ParamValuesmax[Param_number_used_variables[var_num]]*2;
+                            }
+                        }
+
+                        //calculate new funktion value
+                        double calculated_value_base=calculate_intern(postfix,Paramnames,ParamValues,Vars_nan).second;
+                        double calculated_value_condition_error=calculate_intern(postfix_conditions,Paramnames,ParamValues,Vars_nan).second;
+
+                        //Variant 2
+                        //double calculated_value=calculated_value_base+calculated_value_condition_error*pow(PenalityMultiplier_time*round,PenalityMultiplier_time_pot);
+                        //double lastvalue=lastvalue_base+lastvalue_condition_error*pow(PenalityMultiplier_time*round,PenalityMultiplier_time_pot);
+                        //Variant 3
+                        double calculated_value=calculated_value_condition_error;
+                        double lastvalue=lastvalue_base+lastvalue_condition_error;
+
+                        //Armijo-rule
+                        //f(x-t*grad)-f(x)<=-1/2*t*|grad|^2
+                        //|grad|^2==abs(grad)
+                        //=>f(x+t*x1)<=falt(x)-1/2*t*x1^2
+                        //t=1/2^m,m=0,1,2,3,4,... => t1->t2 == x1->x1/2,...
+
+                        //Variant 1/2
+        //                if(calculated_value<(lastvalue-0.5*alpha*Armijo_sum))
+                        //Variante 3
+                        //use better value only if condition error is not worse then bevor
+                        if((calculated_value_condition_error<lastvalue_condition_error-beta*alpha*Armijo_error)
+                                ||((calculated_value_condition_error==lastvalue_condition_error)&&(calculated_value_base<lastvalue_base-beta*alpha*Armijo_base))
+                                //||(gradient_i_is_zero)&&((calculated_value_condition_error<lastvalue_condition_error)
+                                //                        ||((calculated_value_condition_error==lastvalue_condition_error)&&(calculated_value_base<lastvalue_base)))
+                                )
+                        {
+
+                            lastvalue_condition_error=calculated_value_condition_error;
+                            lastvalue_base=calculated_value_base;
+
+                            //set ascending/descending of alpha
+                            //=>search the biggest possible value for alpha=1/2^m, m in integer
+                            if (alpha_descending)
+                            {
+                                break;
+                            }
+                            //if change of variable will be bigger than maximum break
+                            if (alpha*2*variable_change[var_num]>max_variable_change)
+                                break;
+                            if (alpha_ascending)
+                                //variable change can maybe be bigger, try the double length
+                                //at first time dont double alpha, 2nd addition dos this instead
+                                alpha*=2;
+                            else
+                                alpha_ascending=true;
+                            gradient_i_is_zero=false;
+                        }
+                        else
+                        {
+                            //reset values to latest working version
+                            ParamValues[Param_number_used_variables[var_num]]=oldparam_value;
+
+                            //set ascending/descending of alpha
+                            //=>search the biggest possible value for alpha=1/2^m, m in integer
+                            if (alpha_ascending)
+                            {
+                                break;
+                            }
+                            alpha_descending=true;
+
+                            alpha/=2;
+                            //variable_change to big(jump over) -> try with the half length
+                        }
+                    }
+                }
+                //check if the overallgradient=0
+                if (!gradient_i_is_zero)gradient_is_zero=false;
+            }
+            //for parallelization check if Gradient of all komponents=0
+        }
+
+        double lastvalue_base=calculate_intern(postfix,Paramnames,ParamValues,Vars_nan).second;
+        double lastvalue_condition_error=calculate_intern(postfix_conditions,Paramnames,ParamValues,Vars_nan).second;
+
+        //check if new solution is better than bevor
+        if((lastvalue_condition_error<bestvalue_condition_error)
+                ||((lastvalue_condition_error==bestvalue_condition_error)&&(lastvalue_base<bestvalue_base)))
+        {
+            //new Parameter are better
+            bestvalue_base=lastvalue_base;
+            bestvalue_condition_error=lastvalue_condition_error;
+            ParamValues_old=ParamValues;
+        }
+
+        //check if time is left
+        if (round>=max_rounds)
+        {
+            //end
+            ParamValues=ParamValues_old;
+        }
+        else
+        {
+            //next try
+            for(int var_num=0;var_num<Param_number_used_variables.length();++var_num)
+            {
+                //randomize
+                ParamValues[Param_number_used_variables[var_num]]=randomnumber(ParamValuesmin[Param_number_used_variables[var_num]],ParamValuesmax[Param_number_used_variables[var_num]]);
             }
         }
     }
-/*TODO RANDOM RESTARTS*/
-
 
 
     //finalize: return best ParameterValues-> Values who Violate most less(sum of all violations)
 
     //check if conditions are ok
-    bool conditions_are_ok=false;
-    if (calculate_intern(postfix_conditions,Paramnames,ParamValues,Vars_nan).second==0)conditions_are_ok=true;
+    *condition_error=calculate_intern(postfix_conditions,Paramnames,ParamValues,Vars_nan).second;
 
-    if (conditions_are_ok)
-    {
-        *parameter_valid=true;
-    }
-    else
-    {
-        *parameter_valid=false;
-    }
     return ParamValues;
 }

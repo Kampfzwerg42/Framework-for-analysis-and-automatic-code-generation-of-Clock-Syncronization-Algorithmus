@@ -201,7 +201,7 @@ void Frontend_class::on_pushButton_clicked()
             }
         }
         if (algo_is_valid){
-            bool valid_parameter=false;
+            double condition_error=0;
             //search Optima
             //set Optimal Params for Algorithmus
             QString optimization_string="";
@@ -223,7 +223,7 @@ void Frontend_class::on_pushButton_clicked()
                 optimization_string="0";
             if (!ui->Opt_Error->isChecked())
             {
-                QList<double> Param_calculated=calculater->Optimization(optimization_string,Paramnames,ParamValuesmin,ParamValuesmax,ParamValues_nan,&valid_parameter);
+                QList<double> Param_calculated=calculater->Optimization(optimization_string,Paramnames,ParamValuesmin,ParamValuesmax,ParamValues_nan,&condition_error);
                 if (!Param_calculated.isEmpty()) ParamValues=Param_calculated;
             }
 
@@ -241,6 +241,8 @@ void Frontend_class::on_pushButton_clicked()
             ui->tableWidget->insertRow(0);
             SortableTableWidgetItem *item = new SortableTableWidgetItem(Param_column);
             item->setFlags(item->flags() ^ Qt::ItemIsEditable);
+            bool valid_parameter=true;
+            if (condition_error>epsylon_min)valid_parameter=false;
             if (valid_parameter)
             {
                 item->setValidity(valid_parameter);
@@ -277,8 +279,14 @@ void Frontend_class::on_pushButton_clicked()
 
             //calculate sorting
             QString content_text="0";
-            if (!optimization_string.isEmpty())
-                content_text=calculater->calculate(optimization_string,Paramnames,ParamValues,ParamValues_nan);
+            if (valid_parameter)
+            {
+                if (!optimization_string.isEmpty())
+                    content_text=calculater->calculate(optimization_string,Paramnames,ParamValues,ParamValues_nan);
+            }
+            else
+                content_text=QString::number(condition_error);
+
             item = new SortableTableWidgetItem(content_text);
             item->setFlags(item->flags() ^ Qt::ItemIsEditable);
             if (valid_parameter)

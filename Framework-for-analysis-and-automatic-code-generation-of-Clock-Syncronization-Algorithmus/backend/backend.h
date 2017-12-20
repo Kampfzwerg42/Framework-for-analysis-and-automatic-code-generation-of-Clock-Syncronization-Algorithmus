@@ -12,7 +12,7 @@ class backend
 public:
     backend();
     QString calculate(QString text,QStringList VarNames,QList<double> Vars,QStringList Vars_nan);
-    QList<double> Optimization(QString text,QStringList Paramnames,QList<double> ParamValuesmin,QList<double> ParamValuesmax,QStringList Vars_nan,bool *parameter_valid);
+    QList<double> Optimization(QString text,QStringList Paramnames,QList<double> ParamValuesmin,QList<double> ParamValuesmax,QStringList Vars_nan,double *condition_error);
     QList<double> Optimization_comb(QStringList texts,QStringList Paramnames,QList<double> ParamValuesmin,QList<double> ParamValuesmax,QStringList Vars_nan,bool minimization=true);
     QList<double> Optimization_alternativ(QString text,QStringList Paramnames,QList<double> ParamValuesmin,QList<double> ParamValuesmax,QStringList Vars_nan,bool minimization=true);
 private:
