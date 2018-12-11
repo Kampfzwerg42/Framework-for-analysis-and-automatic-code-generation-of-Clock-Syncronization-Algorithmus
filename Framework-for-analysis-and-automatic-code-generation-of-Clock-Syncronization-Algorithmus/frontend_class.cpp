@@ -206,7 +206,7 @@ void Frontend_class::on_pushButton_clicked()
             //set Optimal Params for Algorithmus
             QString optimization_string="";
             if (ui->Opt_Precision->isChecked())optimization_string=Systemparameter[1];
-            if (ui->Opt_Network->isChecked())optimization_string=Systemparameter[3];
+            if (ui->Opt_Network->isChecked())optimization_string="U";
             if (ui->Opt_wighted_combination->isChecked())optimization_string=ui->Opt_wight_funktion->text();
             for(int k=0;k<cells[0].length();++k)
             {
@@ -455,4 +455,11 @@ void Frontend_class::on_spinBoxdouble_max_valueChanged(const QString &arg1)
 {
     ui->System_param_table->item(ui->System_param_table->currentRow(),2)->setText(arg1);
     ui->System_param_table->resizeColumnsToContents();
+}
+
+void Frontend_class::on_override_clicked()
+{
+    while(ui->System_param_table->rowCount()>0)
+        ui->System_param_table->removeRow(0);
+    on_Autofill_clicked();
 }

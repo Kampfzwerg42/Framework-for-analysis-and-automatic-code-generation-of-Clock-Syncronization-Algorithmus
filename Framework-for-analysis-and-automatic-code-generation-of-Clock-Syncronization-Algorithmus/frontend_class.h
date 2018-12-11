@@ -50,6 +50,8 @@ private slots:
 
     void on_spinBoxdouble_max_valueChanged(const QString &arg1);
 
+    void on_override_clicked();
+
 private:
     Ui::Frontend_class *ui;
     Database_Editor_Class *db_editor;

@@ -141,6 +141,13 @@
              </property>
             </widget>
            </item>
+           <item row="2" column="3">
+            <widget class="QPushButton" name="override">
+             <property name="text">
+              <string>Override all</string>
+             </property>
+            </widget>
+           </item>
           </layout>
          </widget>
         </item>
